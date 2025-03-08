@@ -40,7 +40,7 @@ class handler:
         return cars
 
     def get_car_by_id(self, car_id):
-        self.cursor.execute("SELECT * FROM cars WHERE id= ?", car_id)
+        self.cursor.execute("SELECT * FROM cars WHERE id= ?", (car_id,))
         row = self.cursor.fetchone()
         if row:
             return{
@@ -54,11 +54,48 @@ class handler:
         return None
 
 
-
-
     def add_car(self, brand, model, price, year, stock):
         self.cursor.execute("INSERT INTO cars (brand, model, price, year, stock) VALUES (?,?,?,?,?)", (brand, model, price, year, stock))
         self.conn.commit()
 
 
+    def delete_car(self, car_id):
+        self.cursor.execute("DELETE FROM cars WHERE id = ?", (car_id,))
+        self.conn.commit()
+        if self.cursor.rowcount > 0:
+            return f"Car with ID {car_id} has been deleted."
+        else:
+            return f"No car found with ID {car_id}."
 
+    def update_car(self, data, car_id):
+        # daca am campul x ca cheie in dictionarul data, iau valoare lui x si o schimb in baza de date
+        set_clause = []
+        values = []
+        if "brand" in data:
+            set_clause.append("brand = ?")
+            values.append(data["brand"])
+        if "model" in data:
+            set_clause.append("model = ?")
+            values.append(data["model"])
+        if "price" in data:
+            set_clause.append("price = ?")
+            values.append(data["price"])
+        if "year" in data:
+            set_clause.append("year = ?")
+            values.append(data["year"])
+        if "stock" in data:
+            set_clause.append("stock = ?")
+            values.append(data["stock"])
+        if not set_clause:
+            return "No fields to update."
+
+
+        values.append(car_id)
+        query = f"UPDATE cars SET {', '.join(set_clause)} WHERE id = ?"
+
+        self.cursor.execute(query, tuple(values))
+        self.conn.commit()
+        if self.cursor.rowcount > 0:
+            return f"Car with ID {car_id} has been updated."
+        else:
+            return f"No car found with ID {car_id}."

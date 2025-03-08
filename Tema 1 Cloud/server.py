@@ -3,22 +3,8 @@ from database_handler import handler
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse, parse_qs
 
-# cursor.execute("""
-#     CREATE TABLE IF NOT EXISTS cars(
-#     id INTEGER PRIMARY KEY AUTOINCREMENT,
-#     brand TEXT NOT NULL,
-#     model TEXT NOT NULL,
-#     price INTEGER NOT NULL,
-#     year INTEGER
-#     )""")
 
 db_handler = handler()
-
-# de inlocuit cu baza de date reala
-users = [
-    {"id": 1, "username": "admin", "password": "1234", "role": "employee"},
-    {"id": 2, "username": "john_doe", "password": "abcd", "role": "customer"},
-]
 
 # clasa principala a sv http
 class DealershipAPI(BaseHTTPRequestHandler):
@@ -34,23 +20,22 @@ class DealershipAPI(BaseHTTPRequestHandler):
         return {}
 
     def do_GET(self):
+
         parsed_path = urlparse(self.path)
         path_segments = parsed_path.path.strip('/').split('/')
 
-        if path_segments[0] == "cars" and len(path_segments) == 1:
-            self._set_headers(200)
-            cars = db_handler.get_cars()
-            self.wfile.write(json.dumps(cars).encode())
-
-        elif path_segments[0] == "cars" and len(path_segments) == 2:
-            self._set_headers(200)
-            car = db_handler.get_car_by_id(path_segments[1])
-            self.wfile.write(json.dumps(car).encode())
-
-        elif path_segments[0] == "cars":
-            self._set_headers(200)
-            cars = db_handler.get_cars()
-            self.wfile.write(json.dumps(cars).encode())
+        if path_segments[0] == "cars":
+            if len(path_segments) == 1:
+                self._set_headers(200)
+                self.wfile.write(json.dumps(db_handler.get_cars()).encode())
+            elif len(path_segments) == 2:
+                car = db_handler.get_car_by_id(path_segments[1])
+                if car:
+                    self._set_headers(200)
+                    self.wfile.write(json.dumps(car).encode())
+                else:
+                    self._set_headers(404)
+                    self.wfile.write(json.dumps({"error": "Car not found"}).encode())
         else:
             self._set_headers(404)
             self.wfile.write(json.dumps({"error": "Not found"}).encode())
@@ -73,19 +58,36 @@ class DealershipAPI(BaseHTTPRequestHandler):
             db_handler.add_car(brand, model, price, year, stock)
             self._set_headers(201)
             self.wfile.write(json.dumps({"message": "Car added", "car": data}).encode())
-
-        elif path_segments[0] == "users":
-            data = self._parse_body()
-            new_id = max(u["id"] for u in users) + 1 if users else 1
-            data["id"] = new_id
-            users.append(data)
-            self._set_headers(201)
-            self.wfile.write(json.dumps({"message": "User added", "user": data}).encode())
-
         else:
             self._set_headers(404)
             self.wfile.write(json.dumps({"error": "Not found"}).encode())
 
+    def do_PUT(self):
+        parsed_path = urlparse(self.path)
+        path_segments = parsed_path.path.strip('/').split('/')
+
+        if path_segments[0] == "cars" and len(path_segments) > 1:
+            car_id = int(path_segments[1])
+            data = self._parse_body()
+            db_handler.update_car(data, car_id)
+            self._set_headers(200)
+            self.wfile.write(json.dumps({"message": "Car details updated! <3"}).encode())
+        else:
+            self._set_headers(404)
+            self.wfile.write(json.dumps({"error": "Not found"}).encode())
+
+    def do_DELETE(self):
+        parsed_path = urlparse(self.path)
+        path_segments = parsed_path.path.strip('/').split('/')
+
+        if path_segments[0] == "cars" and len(path_segments) > 1:
+            car_id = int(path_segments[1])
+            self._set_headers(200)
+            db_handler.delete_car(car_id)
+            self.wfile.write(json.dumps({"message": "Car deleted"}).encode())
+        else:
+            self._set_headers(404)
+            self.wfile.write(json.dumps({"error": "Not found"}).encode())
 
 # pornire server
 def run(server_class=HTTPServer, handler_class=DealershipAPI, port=8000):
