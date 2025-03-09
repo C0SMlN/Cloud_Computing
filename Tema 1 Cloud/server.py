@@ -1,9 +1,9 @@
 import json
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
-from database_handler import Handler
+from database_handler import handler
 
-db_handler = Handler()
+db_handler = handler()
 db_handler.creare_tabel()
 
 class DealershipAPI(BaseHTTPRequestHandler):
