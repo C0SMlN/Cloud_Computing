@@ -1,13 +1,11 @@
 import json
-from operator import length_hint
-
-from database_handler import handler
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse
+from database_handler import Handler
 
-db_handler = handler()
+db_handler = Handler()
+db_handler.creare_tabel()
 
-# clasa principala a sv http
 class DealershipAPI(BaseHTTPRequestHandler):
     def _set_headers(self, status=200):
         self.send_response(status)
@@ -24,17 +22,33 @@ class DealershipAPI(BaseHTTPRequestHandler):
         self._set_headers(status)
         self.wfile.write(json.dumps({"error": message}).encode())
 
+    def _add_hateoas_links(self, car):
+        # adauga linkuri hateoas la un dict care reprez o masina
+        car["_links"] = {
+            "self": f"/cars/{car['id']}",
+            "update": f"/cars/{car['id']}",
+            "delete": f"/cars/{car['id']}"
+        }
+        return car
+
     def do_GET(self):
         parsed_path = urlparse(self.path)
         path_segments = parsed_path.path.strip('/').split('/')
-
         if path_segments[0] == "cars":
             if len(path_segments) == 1:
+                cars = db_handler.get_cars()
+                cars_with_links = [self._add_hateoas_links(car) for car in cars]
                 self._set_headers(200)
-                self.wfile.write(json.dumps(db_handler.get_cars()).encode())
+                self.wfile.write(json.dumps(cars_with_links).encode())
             elif len(path_segments) == 2:
-                car = db_handler.get_car_by_id(path_segments[1])
+                try:
+                    car_id = int(path_segments[1])
+                except ValueError:
+                    self._send_error(400, "Invalid car ID")
+                    return
+                car = db_handler.get_car_by_id(car_id)
                 if car:
+                    car = self._add_hateoas_links(car)
                     self._set_headers(200)
                     self.wfile.write(json.dumps(car).encode())
                 else:
@@ -45,75 +59,68 @@ class DealershipAPI(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed_path = urlparse(self.path)
         path_segments = parsed_path.path.strip('/').split('/')
-        if len(path_segments) == 1:
-            if path_segments[0] == "cars":
-                data = self._parse_body()
-                brand = data.get('brand')
-                model = data.get('model')
-                price = data.get('price')
-                year = data.get('year')
-                stock = data.get('stock')
-                if not brand or not model or not year or not price or not stock:
-                    self._set_headers(400)
-                    self.wfile.write(json.dumps({"error": "Missing fields"}).encode())
-                    return
-                db_handler.add_car(brand, model, price, year, stock)
-                self._set_headers(201)
-                self.wfile.write(json.dumps({"message": "Car added", "car": data}).encode())
-            else:
-                self._send_error(404, "Not found")
+        if len(path_segments) == 1 and path_segments[0] == "cars":
+            data = self._parse_body()
+            required_fields = ['brand', 'model', 'price', 'year', 'stock']
+            if not all(field in data for field in required_fields):
+                self._set_headers(400)
+                self.wfile.write(json.dumps({"error": "Missing fields"}).encode())
+                return
+            car_id = db_handler.add_car(data['brand'], data['model'], data['price'], data['year'], data['stock'])
+            new_car = db_handler.get_car_by_id(car_id)
+            new_car = self._add_hateoas_links(new_car)
+            self._set_headers(201)
+            self.wfile.write(json.dumps(new_car).encode())
         else:
-            self._send_error(405, "Method not allowed.")
+            self._send_error(404, "Not found")
 
     def do_PUT(self):
         parsed_path = urlparse(self.path)
         path_segments = parsed_path.path.strip('/').split('/')
-        if path_segments[0] == "cars":
-            if len(path_segments) == 1:
-                self._send_error(405, "Method not allowed.")
-            elif len(path_segments) == 2:
-                try:
-                    car_id = int(path_segments[1])
-                except ValueError:
-                    self._send_error(400, "Invalid car ID")
-                    return
-                data = self._parse_body()
-                car = db_handler.get_car_by_id(path_segments[1])
-                if car:
-                    db_handler.update_car(data, car_id)
-                    self._set_headers(200)
-                    self.wfile.write(json.dumps({"message": "Car details updated! <3"}).encode())
-                else:
-                    self._send_error(404, "Not found")
+        if path_segments[0] == "cars" and len(path_segments) == 2:
+            try:
+                car_id = int(path_segments[1])
+            except ValueError:
+                self._send_error(400, "Invalid car ID")
+                return
+            data = self._parse_body()
+            car = db_handler.get_car_by_id(car_id)
+            if car:
+                db_handler.update_car(data, car_id)
+                updated_car = db_handler.get_car_by_id(car_id)
+                updated_car = self._add_hateoas_links(updated_car)
+                self._set_headers(200)
+                self.wfile.write(json.dumps(updated_car).encode())
             else:
                 self._send_error(404, "Not found")
+        else:
+            self._send_error(404, "Not found")
 
     def do_DELETE(self):
         parsed_path = urlparse(self.path)
         path_segments = parsed_path.path.strip('/').split('/')
-
-        if path_segments[0] == "cars":
-                if len(path_segments) == 2:
-                    try:
-                        car_id = int(path_segments[1])
-                    except ValueError:
-                        self._send_error(400, "Invalid car ID")
-                        return
-                    car = db_handler.get_car_by_id(car_id)
-                    if car:
-                        self._set_headers(200)
-                        db_handler.delete_car(car_id)
-                        self.wfile.write(json.dumps({"message": "Car deleted"}).encode())
-                    else:
-                        self._send_error(404, "Not found")
-                elif len(path_segments) == 1:
-                    self._send_error(405, "Method not allowed.")
-                else:
-                    self._send_error(404, "Not found")
+        if path_segments[0] == "cars" and len(path_segments) == 2:
+            try:
+                car_id = int(path_segments[1])
+            except ValueError:
+                self._send_error(400, "Invalid car ID")
+                return
+            car = db_handler.get_car_by_id(car_id)
+            if car:
+                db_handler.delete_car(car_id)
+                self._set_headers(200)
+                response = {
+                    "message": f"Car with ID {car_id} has been deleted.",
+                    "_links": {
+                        "all_cars": "/cars"
+                    }
+                }
+                self.wfile.write(json.dumps(response).encode())
+            else:
+                self._send_error(404, "Not found")
         else:
             self._send_error(404, "Not found")
 
-# pornire server
 def run(server_class=HTTPServer, handler_class=DealershipAPI, port=8000):
     server_address = ('', port)
     httpd = server_class(server_address, handler_class)
