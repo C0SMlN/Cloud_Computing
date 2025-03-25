@@ -68,7 +68,7 @@ class DealershipAPI(BaseHTTPRequestHandler):
                 return
             car_id = db_handler.add_car(data['brand'], data['model'], data['price'], data['year'], data['stock'])
             new_car = db_handler.get_car_by_id(car_id)
-            new_car = self._add_hateoas_links(new_car)
+         #   new_car = self._add_hateoas_links(new_car)
             self._set_headers(201)
             self.wfile.write(json.dumps(new_car).encode())
         else:
